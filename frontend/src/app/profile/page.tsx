@@ -1,16 +1,25 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Switch } from "@/components/ui/switch"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import Image from "next/image";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Switch } from "@/components/ui/switch";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,144 +30,329 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Camera, Edit, Film, Lock, Settings, User, Grid, List, X, Star } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import Link from "next/link"
+} from "@/components/ui/alert-dialog";
+import {
+  Camera,
+  Film,
+  Lock,
+  User as UserIcon,
+  Grid,
+  List,
+  X,
+  Star,
+} from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import axios from "axios";
 
-// Mock user data
-const user = {
-  name: "John Doe",
-  email: "john.doe@example.com",
-  avatar: "/placeholder.svg?height=100&width=100",
-  subscription: "Premium",
-  favoriteGenres: ["Action", "Sci-Fi", "Drama"],
-  recentlyWatched: [
-    { id: "1", title: "Inception", poster: "/placeholder.svg?height=300&width=200&text=Inception", progress: 100 },
-    { id: "2", title: "The Matrix", poster: "/placeholder.svg?height=300&width=200&text=The+Matrix", progress: 75 },
-    { id: "3", title: "Interstellar", poster: "/placeholder.svg?height=300&width=200&text=Interstellar", progress: 50 },
-    {
-      id: "4",
-      title: "The Dark Knight",
-      poster: "/placeholder.svg?height=300&width=200&text=The+Dark+Knight",
-      progress: 25,
-    },
-    { id: "5", title: "Pulp Fiction", poster: "/placeholder.svg?height=300&width=200&text=Pulp+Fiction", progress: 10 },
-  ],
-  watchProgress: [
-    {
-      id: "6",
-      title: "Stranger Things",
-      season: 2,
-      episode: 5,
-      poster: "/placeholder.svg?height=300&width=200&text=Stranger+Things",
-    },
-    {
-      id: "7",
-      title: "Breaking Bad",
-      season: 3,
-      episode: 7,
-      poster: "/placeholder.svg?height=300&width=200&text=Breaking+Bad",
-    },
-  ],
-  achievements: [
-    { id: "1", name: "Movie Buff", description: "Watched 100 movies", icon: "🎬" },
-    { id: "2", name: "Binge Watcher", description: "Completed a TV series in one day", icon: "📺" },
-    { id: "3", name: "Critic", description: "Wrote 50 reviews", icon: "✍️" },
-  ],
-  favorites: [
-    { id: "1", title: "Inception", genre: "Sci-Fi", poster: "/placeholder.svg?height=400&width=300&text=Inception" },
-    {
-      id: "2",
-      title: "The Dark Knight",
-      genre: "Action",
-      poster: "/placeholder.svg?height=400&width=300&text=The+Dark+Knight",
-    },
-    {
-      id: "3",
-      title: "Pulp Fiction",
-      genre: "Crime",
-      poster: "/placeholder.svg?height=400&width=300&text=Pulp+Fiction",
-    },
-    {
-      id: "4",
-      title: "Forrest Gump",
-      genre: "Drama",
-      poster: "/placeholder.svg?height=400&width=300&text=Forrest+Gump",
-    },
-    { id: "5", title: "The Matrix", genre: "Sci-Fi", poster: "/placeholder.svg?height=400&width=300&text=The+Matrix" },
-  ],
+interface RecentlyWatchedMovie {
+  id: string;
+  movieId: string;
+  title: string;
+  poster: string;
+  progress: number;
 }
 
+interface WatchProgressSeries {
+  id: string;
+  title: string;
+  season: number;
+  episode: number;
+  poster: string;
+}
+
+interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+interface FavoriteMovie {
+  id: string;
+  movieId: string;
+}
+
+interface Profile {
+  full_name: string;
+  email: string;
+  avatar: string;
+  subscription: string;
+  favoriteGenres: string[];
+  recentlyWatched: RecentlyWatchedMovie[];
+  watchProgress: WatchProgressSeries[];
+  achievements: Achievement[];
+  favorites: FavoriteMovie[];
+}
+
+interface MovieDetail {
+  id: number;
+  title: string;
+  posterUrl: string;
+  summary: string;
+  genre: string;
+}
+
+type ViewMode = "grid" | "list";
+type SortBy = "newest" | "title";
+type FilterBy = "all" | "action" | "sci-fi" | "drama" | "crime";
+
 export default function ProfilePage() {
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [name, setName] = useState(user.name)
-  const [email, setEmail] = useState(user.email)
-  const [favorites, setFavorites] = useState(user.favorites)
-  const [viewMode, setViewMode] = useState("grid")
-  const [sortBy, setSortBy] = useState("newest")
-  const [filterBy, setFilterBy] = useState("all")
-  const [movieToRemove, setMovieToRemove] = useState<string | null>(null)
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
+  const [profile, setProfile] = useState<Profile>({
+    full_name: "John Doe",
+    email: "john.doe@example.com",
+    avatar: "/placeholder.svg?height=100&width=100",
+    subscription: "Premium",
+    favoriteGenres: ["Action", "Sci-Fi", "Drama"],
+    recentlyWatched: [],
+    watchProgress: [],
+    achievements: [],
+    favorites: [],
+  });
+
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [name, setName] = useState(profile.full_name);
+  const [email, setEmail] = useState(profile.email);
+  const [favorites, setFavorites] = useState<FavoriteMovie[]>(profile.favorites);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [sortBy, setSortBy] = useState<SortBy>("newest");
+  const [filterBy, setFilterBy] = useState<FilterBy>("all");
+  const [movieToRemove, setMovieToRemove] = useState<string | null>(null);
+  const [movieDetails, setMovieDetails] = useState<Record<string, MovieDetail>>({});
+
+  // State cho đổi mật khẩu
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordMsg, setPasswordMsg] = useState<string>("");
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/sign-in");
+    }
+  }, [status, router]);
+
+  // Fetch profile
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!session?.token) return;
+      try {
+        const { data } = await axios.get("http://localhost:5000/api/customers/profile", {
+          headers: { Authorization: `Bearer ${session.token}` },
+          withCredentials: true,
+        });
+        setProfile((prev) => ({ ...prev, ...data }));
+        setName(data.full_name || data.name);
+        setEmail(data.email);
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
+    };
+    fetchProfile();
+  }, [session]);
+
+  // Fetch watch histories (Recently Watched)
+  useEffect(() => {
+    const fetchWatchHistories = async () => {
+      if (!session?.token) return;
+      try {
+        const { data } = await axios.get("http://localhost:5000/api/user-watch-histories", {
+          headers: { Authorization: `Bearer ${session.token}` },
+          withCredentials: true,
+        });
+        setProfile((prev) => ({ ...prev, recentlyWatched: data }));
+      } catch (error) {
+        console.error("Error fetching watch histories:", error);
+      }
+    };
+    fetchWatchHistories();
+  }, [session]);
+
+  // Fetch favorites
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      if (!session?.token) return;
+      try {
+        const { data } = await axios.get("http://localhost:5000/api/user-favorites", {
+          headers: { Authorization: `Bearer ${session.token}` },
+          withCredentials: true,
+        });
+        setProfile((prev) => ({ ...prev, favorites: data }));
+        setFavorites(data);
+      } catch (error) {
+        console.error("Error fetching favorites:", error);
+      }
+    };
+    fetchFavorites();
+  }, [session]);
+
+  // Cập nhật movieDetails từ favorites và recentlyWatched
+  useEffect(() => {
+    const fetchMovieDetail = async (movieId: string) => {
+      if (!session?.token) return;
+      try {
+        const response = await axios.get(`http://localhost:5000/api/movies/${movieId}`, {
+          headers: { Authorization: `Bearer ${session.token}` },
+          withCredentials: true,
+        });
+        return response.data as MovieDetail;
+      } catch (error) {
+        console.error(`Error fetching movie detail for movieId ${movieId}:`, error);
+        return null;
+      }
+    };
+
+    const updateMovieDetails = async () => {
+      const details: Record<string, MovieDetail> = { ...movieDetails };
+      const favIds = favorites.map((fav) => fav.movieId);
+      const watchedIds = profile.recentlyWatched.map((rw) => rw.movieId);
+      const allIds = Array.from(new Set([...favIds, ...watchedIds]));
+      await Promise.all(
+        allIds.map(async (id) => {
+          if (!details[id]) {
+            const detail = await fetchMovieDetail(id);
+            if (detail) {
+              details[id] = detail;
+            }
+          }
+        })
+      );
+      setMovieDetails(details);
+    };
+
+    if (session?.token && (favorites.length > 0 || profile.recentlyWatched.length > 0)) {
+      updateMovieDetails();
+    }
+  }, [favorites, profile.recentlyWatched, session]);
+
+  // Xử lý xoá favourite: gọi API DELETE
+  const handleDeleteFavorite = async (movieId: string) => {
+    if (!session?.token) return;
+    try {
+      await axios.delete(`http://localhost:5000/api/user-favorites/movie/${movieId}`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+        withCredentials: true,
+      });
+      // Sau khi xoá thành công, cập nhật lại favorites
+      removeFromFavorites(movieId);
+    } catch (error) {
+      console.error(`Error deleting favorite for movieId ${movieId}:`, error);
+    }
+  };
+
+  // Hàm xử lý đổi mật khẩu
+  const handleChangePassword = async () => {
+    if (!session?.token) return;
+    try {
+      const { data } = await axios.put(
+        "http://localhost:5000/api/customers/change-password",
+        {
+          currentPassword,
+          newPassword,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          withCredentials: true,
+        }
+      );
+      setPasswordMsg("Password changed successfully!");
+      // Reset input fields
+      setCurrentPassword("");
+      setNewPassword("");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error("An unknown error occurred");
+      }
+    }
+  };
+
+  // Handler xoá favourite (gọi API DELETE)
   const removeFromFavorites = (id: string) => {
-    setFavorites(favorites.filter((movie) => movie.id !== id))
-    setMovieToRemove(null)
-  }
+    setFavorites((prev) => prev.filter((movie) => movie.movieId !== id));
+    setProfile((prev) => ({
+      ...prev,
+      favorites: prev.favorites.filter((movie) => movie.movieId !== id),
+    }));
+    setMovieToRemove(null);
+  };
 
+  // Sắp xếp và lọc favorites dựa trên thông tin chi tiết trong movieDetails
   const sortedAndFilteredFavorites = favorites
-    .filter((movie) => filterBy === "all" || movie.genre.toLowerCase() === filterBy)
-    .sort((a, b) => {
-      if (sortBy === "title") return a.title.localeCompare(b.title)
-      return Number.parseInt(b.id) - Number.parseInt(a.id)
+    .filter((fav) => {
+      const detail = movieDetails[fav.movieId];
+      if (!detail) return false;
+      if (filterBy === "all") return true;
+      return detail.genre.toLowerCase() === filterBy;
     })
+    .sort((a, b) => {
+      const detailA = movieDetails[a.movieId];
+      const detailB = movieDetails[b.movieId];
+      if (!detailA || !detailB) return 0;
+      if (sortBy === "title") return detailA.title.localeCompare(detailB.title);
+      return detailB.id - detailA.id;
+    });
 
-  return (
+  return status === "loading" ? (
+    <div>Loading...</div>
+  ) : (
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-6xl mx-auto">
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
           <div className="flex items-center mb-4 md:mb-0">
             <div className="relative">
               <Avatar className="w-24 h-24">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                <AvatarImage src={profile.avatar} alt={name} />
+                <AvatarFallback>{name.charAt(0)}</AvatarFallback>
               </Avatar>
               <Button size="icon" className="absolute bottom-0 right-0 rounded-full bg-blue-500 hover:bg-blue-600">
                 <Camera className="h-4 w-4" />
               </Button>
             </div>
             <div className="ml-4">
-              <h1 className="text-3xl font-bold">{user.name}</h1>
-              <p className="text-gray-400">{user.email}</p>
+              <h1 className="text-3xl font-bold">{name}</h1>
+              <p className="text-gray-400">{email}</p>
             </div>
           </div>
-          <Button onClick={() => setIsEditMode(!isEditMode)}>{isEditMode ? "Save Profile" : "Edit Profile"}</Button>
+          <Button onClick={() => setIsEditMode(!isEditMode)}>
+            {isEditMode ? "Save Profile" : "Edit Profile"}
+          </Button>
         </div>
 
         <Tabs defaultValue="account" className="space-y-4">
           <TabsList>
             <TabsTrigger value="account">
-              <User className="w-4 h-4 mr-2" />
+              <UserIcon className="w-4 h-4 mr-2" />
               Account
             </TabsTrigger>
             <TabsTrigger value="activity">
               <Film className="w-4 h-4 mr-2" />
               Activity
             </TabsTrigger>
-            <TabsTrigger value="security">
-              <Lock className="w-4 h-4 mr-2" />
-              Security
-            </TabsTrigger>
-            <TabsTrigger value="preferences">
-              <Settings className="w-4 h-4 mr-2" />
-              Preferences
-            </TabsTrigger>
             <TabsTrigger value="favorites">
               <Star className="w-4 h-4 mr-2" />
               Favorites
             </TabsTrigger>
+            <TabsTrigger value="security">
+              <Lock className="w-4 h-4 mr-2" />
+              Security
+            </TabsTrigger>
           </TabsList>
 
+          {/* Tab Account */}
           <TabsContent value="account">
             <Card>
               <CardHeader>
@@ -176,12 +370,13 @@ export default function ProfilePage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Subscription Status</Label>
-                  <p className="text-green-500 font-semibold">{user.subscription}</p>
+                  <p className="text-green-500 font-semibold">{profile.subscription}</p>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* Tab Activity */}
           <TabsContent value="activity">
             <Card>
               <CardHeader>
@@ -193,23 +388,38 @@ export default function ProfilePage() {
                   <h3 className="text-lg font-semibold mb-2">Recently Watched</h3>
                   <ScrollArea className="w-full whitespace-nowrap rounded-md border border-gray-700">
                     <div className="flex w-max space-x-4 p-4">
-                      {user.recentlyWatched.map((movie) => (
-                        <div key={movie.id} className="w-[150px] space-y-3">
-                          <div className="overflow-hidden rounded-md">
-                            <Image
-                              src={movie.poster || "/placeholder.svg"}
-                              alt={movie.title}
-                              width={150}
-                              height={200}
-                              className="object-cover transition-all hover:scale-105 aspect-[3/4]"
-                            />
-                          </div>
-                          <div className="space-y-1 text-sm">
-                            <h3 className="font-medium leading-none">{movie.title}</h3>
-                            <p className="text-xs text-gray-400">Progress: {movie.progress}%</p>
-                          </div>
-                        </div>
-                      ))}
+                      {profile.recentlyWatched.length > 0 ? (
+                        profile.recentlyWatched.map((watch) => {
+                          const detail = movieDetails[watch.movieId];
+                          return (
+                            <div key={watch.id} className="w-[150px] space-y-3">
+                              <div className="overflow-hidden rounded-md">
+                                {detail ? (
+                                  <Image
+                                    src={detail.posterUrl || "/placeholder.svg"}
+                                    alt={detail.title || "Movie poster"}
+                                    width={150}
+                                    height={200}
+                                    className="object-cover transition-all hover:scale-105 aspect-[3/4]"
+                                  />
+                                ) : (
+                                  <div className="flex items-center justify-center h-full bg-gray-700">
+                                    Loading...
+                                  </div>
+                                )}
+                              </div>
+                              <div className="space-y-1 text-sm">
+                                <h3 className="font-medium leading-none">
+                                  {detail ? detail.title : "Loading..."}
+                                </h3>
+                                <p className="text-xs text-gray-400">Progress: {watch.progress}%</p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p>No watch history yet.</p>
+                      )}
                     </div>
                     <ScrollBar orientation="horizontal" />
                   </ScrollArea>
@@ -217,33 +427,143 @@ export default function ProfilePage() {
                 <div>
                   <h3 className="text-lg font-semibold mb-2">Continue Watching</h3>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {user.watchProgress.map((series) => (
-                      <Card key={series.id} className="bg-gray-800">
-                        <CardContent className="p-0">
-                          <div className="relative aspect-video">
-                            <Image
-                              src={series.poster || "/placeholder.svg"}
-                              alt={series.title}
-                              layout="fill"
-                              objectFit="cover"
-                              className="rounded-t-lg"
-                            />
-                          </div>
-                          <div className="p-4">
-                            <h4 className="font-semibold">{series.title}</h4>
-                            <p className="text-sm text-gray-400">
-                              Season {series.season}, Episode {series.episode}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                    {profile.watchProgress.length > 0 ? (
+                      profile.watchProgress.map((series) => (
+                        <Card key={series.id} className="bg-gray-800">
+                          <CardContent className="p-0">
+                            <div className="relative aspect-video">
+                              <Image
+                                src={series.poster || "/placeholder.svg"}
+                                alt={series.title || "Series poster"}
+                                fill
+                                style={{ objectFit: "cover" }}
+                                className="rounded-t-lg"
+                              />
+                            </div>
+                            <div className="p-4">
+                              <h4 className="font-semibold">{series.title}</h4>
+                              <p className="text-sm text-gray-400">
+                                Season {series.season}, Episode {series.episode}
+                              </p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <p>No series in progress.</p>
+                    )}
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* Tab Favorites */}
+          <TabsContent value="favorites">
+            <Card>
+              <CardHeader>
+                <CardTitle>My Favorites</CardTitle>
+                <CardDescription>Manage your favorite movies</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0">
+                  <div className="flex items-center space-x-4">
+                    <Select onValueChange={(value) => setSortBy(value as SortBy)} defaultValue={sortBy}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="newest">Newest Added</SelectItem>
+                        <SelectItem value="title">Title</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select onValueChange={(value) => setFilterBy(value as FilterBy)} defaultValue={filterBy}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="action">Action</SelectItem>
+                        <SelectItem value="sci-fi">Sci-Fi</SelectItem>
+                        <SelectItem value="drama">Drama</SelectItem>
+                        <SelectItem value="crime">Crime</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as ViewMode)}>
+                    <ToggleGroupItem value="grid" aria-label="Grid view">
+                      <Grid className="h-4 w-4" />
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="list" aria-label="List view">
+                      <List className="h-4 w-4" />
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+
+                <div className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" : "grid-cols-1"}`}>
+                  {favorites.length > 0 ? (
+                    favorites
+                      .filter((fav) => {
+                        const detail = movieDetails[fav.movieId];
+                        if (!detail) return false;
+                        if (filterBy === "all") return true;
+                        return detail.genre.toLowerCase() === filterBy;
+                      })
+                      .sort((a, b) => {
+                        const detailA = movieDetails[a.movieId];
+                        const detailB = movieDetails[b.movieId];
+                        if (!detailA || !detailB) return 0;
+                        if (sortBy === "title") return detailA.title.localeCompare(detailB.title);
+                        return detailB.id - detailA.id;
+                      })
+                      .map((fav) => {
+                        const detail = movieDetails[fav.movieId];
+                        return (
+                          <Card key={fav.movieId} className="bg-gray-800 overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-105">
+                            <CardContent className="p-0 relative">
+                              <Link href={`/movie/${fav.movieId}`}>
+                                <div className={`relative ${viewMode === "grid" ? "aspect-[2/3]" : "aspect-[16/9]"}`}>
+                                  {detail ? (
+                                    <Image
+                                      src={detail.posterUrl || "/placeholder.svg"}
+                                      alt={detail.title || "Movie poster"}
+                                      fill
+                                      style={{ objectFit: "cover" }}
+                                      className="rounded-t-lg"
+                                    />
+                                  ) : (
+                                    <div className="flex items-center justify-center h-full bg-gray-700">
+                                      Loading...
+                                    </div>
+                                  )}
+                                </div>
+                              </Link>
+                              <div className="p-4">
+                                <h3 className="font-semibold text-lg mb-1 truncate">
+                                  {detail ? detail.title : "Loading..."}
+                                </h3>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-2 right-2 text-white bg-black bg-opacity-50 hover:bg-opacity-75 rounded-full"
+                                onClick={() => handleDeleteFavorite(fav.movieId)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        );
+                      })
+                  ) : (
+                    <p>No favorite movies yet.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab Security */}
           <TabsContent value="security">
             <Card>
               <CardHeader>
@@ -253,17 +573,24 @@ export default function ProfilePage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="current-password">Current Password</Label>
-                  <Input id="current-password" type="password" />
+                  <Input
+                    id="current-password"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="new-password">New Password</Label>
-                  <Input id="new-password" type="password" />
+                  <Input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirm New Password</Label>
-                  <Input id="confirm-password" type="password" />
-                </div>
-                <Button>Change Password</Button>
+                <Button onClick={handleChangePassword}>Change Password</Button>
+                {passwordMsg && <p>{passwordMsg}</p>}
                 <div className="flex items-center space-x-2">
                   <Switch id="2fa" />
                   <Label htmlFor="2fa">Enable Two-Factor Authentication</Label>
@@ -278,12 +605,13 @@ export default function ProfilePage() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete your account and remove your data
-                        from our servers.
+                        This action cannot be undone. This will permanently delete your account and remove your data from our servers.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel className="bg-gray-700 text-white hover:bg-gray-600">Cancel</AlertDialogCancel>
+                      <AlertDialogCancel className="bg-gray-700 text-white hover:bg-gray-600">
+                        Cancel
+                      </AlertDialogCancel>
                       <AlertDialogAction className="bg-red-600 text-white hover:bg-red-700">
                         Delete Account
                       </AlertDialogAction>
@@ -293,162 +621,19 @@ export default function ProfilePage() {
               </CardFooter>
             </Card>
           </TabsContent>
-
-          <TabsContent value="preferences">
-            <Card>
-              <CardHeader>
-                <CardTitle>Preferences</CardTitle>
-                <CardDescription>Customize your movie-watching experience</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Favorite Genres</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {user.favoriteGenres.map((genre) => (
-                      <Badge key={genre} variant="secondary">
-                        {genre}
-                      </Badge>
-                    ))}
-                    <Button size="sm" variant="outline">
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit Genres
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="language">Preferred Language</Label>
-                  <select id="language" className="w-full p-2 rounded bg-gray-800 border border-gray-700">
-                    <option>English</option>
-                    <option>Spanish</option>
-                    <option>French</option>
-                    <option>German</option>
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch id="notifications" />
-                  <Label htmlFor="notifications">Enable Email Notifications</Label>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle>Achievements</CardTitle>
-                <CardDescription>Your movie-watching milestones</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {user.achievements.map((achievement) => (
-                    <div key={achievement.id} className="flex items-center space-x-4 p-4 bg-gray-800 rounded-lg">
-                      <div className="text-3xl">{achievement.icon}</div>
-                      <div>
-                        <h4 className="font-semibold">{achievement.name}</h4>
-                        <p className="text-sm text-gray-400">{achievement.description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="favorites">
-            <Card>
-              <CardHeader>
-                <CardTitle>My Favorites</CardTitle>
-                <CardDescription>Manage your favorite movies</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0">
-                  <div className="flex items-center space-x-4">
-                    <Select onValueChange={setSortBy} defaultValue={sortBy}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Sort by" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="newest">Newest Added</SelectItem>
-                        <SelectItem value="title">Title</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select onValueChange={setFilterBy} defaultValue={filterBy}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filter by" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All</SelectItem>
-                        <SelectItem value="action">Action</SelectItem>
-                        <SelectItem value="sci-fi">Sci-Fi</SelectItem>
-                        <SelectItem value="drama">Drama</SelectItem>
-                        <SelectItem value="crime">Crime</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value)}>
-                    <ToggleGroupItem value="grid" aria-label="Grid view">
-                      <Grid className="h-4 w-4" />
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="list" aria-label="List view">
-                      <List className="h-4 w-4" />
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
-
-                <div
-                  className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" : "grid-cols-1"}`}
-                >
-                  {sortedAndFilteredFavorites.map((movie) => (
-                    <Card
-                      key={movie.id}
-                      className="bg-gray-800 overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-105"
-                    >
-                      <CardContent className="p-0 relative">
-                        <Link href={`/movie/${movie.id}`}>
-                          <div className={`relative ${viewMode === "grid" ? "aspect-[2/3]" : "aspect-[16/9]"}`}>
-                            <Image
-                              src={movie.poster || "/placeholder.svg"}
-                              alt={movie.title}
-                              layout="fill"
-                              objectFit="cover"
-                              className="rounded-t-lg"
-                            />
-                          </div>
-                        </Link>
-                        <div className="p-4">
-                          <h3 className="font-semibold text-lg mb-1 truncate">{movie.title}</h3>
-                          <p className="text-sm text-gray-400">{movie.genre}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute top-2 right-2 text-white bg-black bg-opacity-50 hover:bg-opacity-75 rounded-full"
-                          onClick={() => setMovieToRemove(movie.id)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
         <AlertDialog open={!!movieToRemove} onOpenChange={() => setMovieToRemove(null)}>
           <AlertDialogContent className="bg-gray-800 text-white">
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
               <AlertDialogDescription className="text-gray-400">
                 This will remove the movie from your favorites list.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel
-                onClick={() => setMovieToRemove(null)}
-                className="bg-gray-700 text-white hover:bg-gray-600"
-              >
-                Cancel
-              </AlertDialogCancel>
+              <AlertDialogCancel className="bg-gray-700 text-white hover:bg-gray-600">Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => movieToRemove && removeFromFavorites(movieToRemove)}
+                onClick={() => movieToRemove && handleDeleteFavorite(movieToRemove)}
                 className="bg-red-600 text-white hover:bg-red-700"
               >
                 Remove
@@ -458,6 +643,5 @@ export default function ProfilePage() {
         </AlertDialog>
       </div>
     </div>
-  )
+  );
 }
-

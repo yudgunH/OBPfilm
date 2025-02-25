@@ -6,9 +6,9 @@ export default function Home() {
     <main className="min-h-screen bg-background">
       <FeaturedBanner />
       <div className="container mx-auto px-4 py-8">
-        <MovieList title="Phim mới" category="new" />
-        <MovieList title="Phim hot" category="trending" />
-        <MovieList title="Phim đề xuất" category="recommended" />
+        <MovieList title="New Movies" category="new" />
+        <MovieList title="Hot Movies" category="hot" />
+        <MovieList title="Recommended Movies" category="recommended" />
       </div>
     </main>
   )

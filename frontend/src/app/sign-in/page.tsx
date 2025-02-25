@@ -1,36 +1,66 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { FaGoogle, FaFacebook } from "react-icons/fa"
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { signIn } from "next-auth/react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FaGoogle, FaEye, FaEyeSlash } from "react-icons/fa";
+import { Toaster, toast } from "react-hot-toast";
+import axios from "axios";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [rememberMe, setRememberMe] = useState(false)
-  const router = useRouter()
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Handle login logic here
-    console.log("Login attempt with:", { email, password, rememberMe })
-    // Redirect to home page after successful login
-    router.push("/")
-  }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Gọi signIn của NextAuth với provider "credentials"
+    const result = await signIn("credentials", {
+      redirect: false, // Nếu bạn muốn xử lý điều hướng sau khi đăng nhập bằng code
+      email,
+      password,
+      callbackUrl: "/profile",
+    });
+  
+    if (result?.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Login successful!");
+      router.push(result?.url || "/profile");
+    }
+  };
+  
+
+  const handleOAuthSignIn = (provider: "google") => {
+    toast.promise(signIn(provider, { callbackUrl: "/profile" }), {
+      loading: `Signing in with ${provider}...`,
+      success: `Signed in with ${provider} successfully!`,
+      error: `Failed to sign in with ${provider}`,
+    });
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 p-4">
+      <Toaster position="top-center" reverseOrder={false} />
       <div className="w-full max-w-md">
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold text-center text-white">Login to MovieStream</CardTitle>
+            <CardTitle className="text-2xl font-bold text-center text-white">
+              Login to MovieStream
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -52,15 +82,28 @@ export default function LoginPage() {
                 <Label htmlFor="password" className="text-white">
                   Password
                 </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={togglePasswordVisibility}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white focus:outline-none"
+                  >
+                    {showPassword ? (
+                      <FaEyeSlash className="h-5 w-5" />
+                    ) : (
+                      <FaEye className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -76,6 +119,7 @@ export default function LoginPage() {
                 Login
               </Button>
             </form>
+
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-gray-600"></span>
@@ -84,12 +128,14 @@ export default function LoginPage() {
                 <span className="bg-gray-800 px-2 text-gray-400">Or continue with</span>
               </div>
             </div>
+
             <div className="flex space-x-4">
-              <Button variant="outline" className="w-full bg-gray-700 hover:bg-gray-600 text-white border-gray-600">
+              <Button
+                variant="outline"
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white border-gray-600"
+                onClick={() => handleOAuthSignIn("google")}
+              >
                 <FaGoogle className="mr-2 h-4 w-4" /> Google
-              </Button>
-              <Button variant="outline" className="w-full bg-gray-700 hover:bg-gray-600 text-white border-gray-600">
-                <FaFacebook className="mr-2 h-4 w-4" /> Facebook
               </Button>
             </div>
           </CardContent>
@@ -109,11 +155,9 @@ export default function LoginPage() {
       <Image
         src="/placeholder.svg?height=1080&width=1920"
         alt="Background"
-        layout="fill"
-        objectFit="cover"
-        className="absolute inset-0 -z-10 opacity-20"
+        fill
+        className="absolute inset-0 -z-10 opacity-20 object-cover"
       />
     </div>
-  )
+  );
 }
-

@@ -1,194 +1,430 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Image from "next/image"
-import Link from "next/link"
-import { PlayCircle, Star } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useParams } from "next/navigation";
+import Image from "next/image";
+import { Heart, PlayCircle, Star, ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import axios from "axios";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { useMovie } from "@/app/providers/MovieContext";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselPrevious,
+  CarouselNext,
+} from "@/components/ui/carousel";
+import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
+import { useSession } from "next-auth/react";
 
-// Mock data for the movie
-const movie = {
-  id: "1",
-  title: "Stranger Things",
-  description:
-    "When a young boy disappears, his mother, a police chief and his friends must confront terrifying supernatural forces in order to get him back.",
-  poster: "/feature_banner.png?height=1080&width=1920",
-  genres: ["Drama", "Fantasy", "Horror"],
-  duration: "50min per episode",
-  releaseYear: 2016,
-  cast: [
-    { name: "Millie Bobby Brown", image: "/placeholder.svg?height=100&width=100" },
-    { name: "Finn Wolfhard", image: "/placeholder.svg?height=100&width=100" },
-    { name: "Winona Ryder", image: "/placeholder.svg?height=100&width=100" },
-  ],
-  rating: 8.7,
-  isSeries: true,
-  episodes: [
-    { id: "1", number: 1, title: "Chapter One: The Vanishing of Will Byers" },
-    { id: "2", number: 2, title: "Chapter Two: The Weirdo on Maple Street" },
-    { id: "3", number: 3, title: "Chapter Three: Holly, Jolly" },
-    { id: "4", number: 4, title: "Chapter Four: The Body" },
-    { id: "5", number: 5, title: "Chapter Five: The Flea and the Acrobat" },
-    { id: "6", number: 6, title: "Chapter Six: The Monster" },
-    { id: "7", number: 7, title: "Chapter Seven: The Bathtub" },
-    { id: "8", number: 8, title: "Chapter Eight: The Upside Down" },
-  ],
-  similarMovies: [
-    { id: "2", title: "The OA", poster: "/placeholder.svg?height=300&width=200" },
-    { id: "3", title: "Dark", poster: "/placeholder.svg?height=300&width=200" },
-    { id: "4", title: "Black Mirror", poster: "/placeholder.svg?height=300&width=200" },
-  ],
+interface MovieDetailData {
+  id: number;
+  title: string;
+  rating: string;
+  views: number;
+  genre: string;
+  summary: string;
+  duration: number;
+  totalEpisodes: number;
+  releaseYear: number;
+  posterUrl: string;
+  trailerUrl: string;
+  status: string;
 }
 
 export default function MovieDetail() {
-  const [userRating, setUserRating] = useState(0)
-  const [comment, setComment] = useState("")
-  const [selectedEpisode, setSelectedEpisode] = useState(1)
-
+  const { data: session, status } = useSession();
+  const { id } = useParams();
   const router = useRouter();
-  
+  const [movie, setMovie] = useState<MovieDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [userRating, setUserRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [selectedEpisode, setSelectedEpisode] = useState(1);
+  const [openTrailer, setOpenTrailer] = useState(false);
+  const { movies, fetchMovies } = useMovie();
+  const [isCollected, setIsCollected] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const { toast } = useToast();
+
+  // Lấy danh sách phim từ context
+  useEffect(() => {
+    fetchMovies();
+  }, [fetchMovies]);
+
+  // Lấy thông tin phim dựa trên id trong URL
+  useEffect(() => {
+    if (!id) return;
+    const fetchMovie = async () => {
+      try {
+        const response = await axios.get<MovieDetailData>(`http://localhost:5000/api/movies/${id}`);
+        setMovie(response.data);
+      } catch (error) {
+        console.error("Error fetching movie:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMovie();
+  }, [id]);
+
+  // Kiểm tra chiều cao của mô tả để hiển thị "Read more/Collapse"
+  useEffect(() => {
+    if (descriptionRef.current) {
+      const lineHeight = Number.parseInt(window.getComputedStyle(descriptionRef.current).lineHeight);
+      const maxHeight = lineHeight * 6;
+      setIsDescriptionExpanded(descriptionRef.current.scrollHeight > maxHeight);
+    }
+  }, []);
+
+  // Kiểm tra xem phim đã được collected hay chưa bằng cách lấy danh sách favorites của người dùng
+  useEffect(() => {
+    // Chỉ chạy khi status không phải "loading"
+    if (status !== "loading") {
+      // Nếu người dùng chưa đăng nhập, mặc định phim chưa được collected
+      if (status !== "authenticated") {
+        setIsCollected(false);
+        return;
+      }
+      if (movie) {
+        // Lấy token từ session 
+        const token = session?.token 
+        if (!token) {
+          console.warn("Token is missing in session");
+          return;
+        }
+        axios
+          .get("http://localhost:5000/api/user-favorites", {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          .then((response) => {
+            const favorites = response.data; // Đây là mảng các mục đã được collected
+            const found = favorites.some((fav: { movieId: number }) => fav.movieId === movie.id);
+            setIsCollected(found);
+          })
+          .catch((error) => {
+            console.error("Error fetching user favorites:", error);
+          });
+      }
+    }
+  }, [status, session, movie]);
+
   const handlePlayVideo = () => {
-    router.push(`/watch/${movie.id}`);
+    if (movie?.id) {
+      router.push(`/watch/${movie.id}/${selectedEpisode}`);
+    }
   };
 
+  // Xử lý nút Collect: nếu chưa collected thì gọi POST để thêm, nếu đã collected thì gọi DELETE để xóa
+  const handleCollectToggle = async () => {
+    if (status !== "authenticated") {
+      toast({
+        title: "Unauthorized",
+        description: "Please log in to add to favorites.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const token = session?.token
+    if (!token) {
+      toast({
+        title: "Error",
+        description: "Token is missing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      if (!isCollected) {
+        await axios.post(
+          "http://localhost:5000/api/user-favorites",
+          { movieId: movie?.id },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setIsCollected(true);
+        toast({
+          title: "Added to favorites",
+          description: "Movie added to your favorites.",
+          variant: "default",
+        });
+      } else {
+        await axios.delete(`http://localhost:5000/api/user-favorites/movie/${movie?.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setIsCollected(false);
+        toast({
+          title: "Removed from favorites",
+          description: "Movie removed from your favorites.",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating favorites:", error);
+      toast({
+        title: "Error",
+        description: "An error occurred while updating favorites.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading || !movie) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  const topMovies = movies
+    .filter((m) => m.id !== movie.id)
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 5);
+
+  const recommendedMovies = movies
+    .filter((m) => m.id !== movie.id && m.genre.toLowerCase() === movie.genre.toLowerCase())
+    .slice(0, 8);
+
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Hero Section */}
-      <div className="relative h-[60vh] w-full">
-        <Image src={movie.poster || "/placeholder.svg"} alt={movie.title} layout="fill" objectFit="cover" priority />
-        <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
-        <div className="absolute bottom-0 left-0 p-8">
-          <h1 className="text-4xl font-bold mb-2">{movie.title}</h1>
-          <Button className="bg-red-600 hover:bg-red-700" onClick={handlePlayVideo}>
-            <PlayCircle className="mr-2 h-4 w-4" /> Play Video
-          </Button>
-          
-        </div>
-      </div>
-
-      {/* Movie Information Card */}
-      <div className="container mx-auto px-4 py-8">
-        <Card className="bg-gray-900 bg-opacity-60 backdrop-blur-lg border-none text-white">
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="col-span-2">
-                <h2 className="text-2xl font-bold mb-2">{movie.title}</h2>
-                <p className="text-gray-300 mb-4">{movie.description}</p>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {movie.genres.map((genre) => (
-                    <Badge key={genre} variant="secondary">
-                      {genre}
-                    </Badge>
-                  ))}
-                </div>
-                <p className="text-sm text-gray-400 mb-2">Duration: {movie.duration}</p>
-                <p className="text-sm text-gray-400 mb-4">Release Year: {movie.releaseYear}</p>
-                <div className="flex items-center mb-4">
-                  <Star className="text-yellow-400 mr-1" />
-                  <span>{movie.rating.toFixed(1)}</span>
-                </div>
-                <Button variant="outline" className="mr-2">
-                  Watch Trailer
-                </Button>
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Cast</h3>
-                <div className="flex flex-wrap gap-4">
-                  {movie.cast.map((actor) => (
-                    <div key={actor.name} className="flex items-center">
-                      <Image
-                        src={actor.image || "/placeholder.svg"}
-                        alt={actor.name}
-                        width={40}
-                        height={40}
-                        className="rounded-full mr-2"
-                      />
-                      <span className="text-sm">{actor.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
+      <Toaster />
+      <div className="max-w-[1400px] mx-auto">
+        <div className="flex flex-col xl:flex-row gap-8">
+          {/* Left Side - Poster */}
+          <div className="xl:w-[560px] flex-shrink-0">
+            <div className="relative w-full xl:w-[560px] aspect-[4/5]">
+              <Image
+                src={movie.posterUrl || "/placeholder.svg?height=560&width=800"}
+                alt={movie.title}
+                fill
+                className="rounded-lg object-cover"
+                priority
+              />
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Episode List (for TV Series only) */}
-      {movie.isSeries && movie.episodes && (
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col items-center">
-            <h2 className="text-2xl font-bold mb-6">Episodes</h2>
-            <div className="flex flex-wrap justify-center gap-2">
-              {movie.episodes.map((episode) => (
-                <Button
-                  key={episode.id}
-                  variant={selectedEpisode === episode.number ? "default" : "outline"}
-                  onClick={() => setSelectedEpisode(episode.number)}
-                  className={`min-w-[48px] ${selectedEpisode === episode.number ? "bg-red-600 hover:bg-red-700" : ""}`}
-                >
-                  {episode.number}
-                </Button>
-              ))}
-            </div>
-            {selectedEpisode && (
-              <div className="mt-4 text-center">
-                <h3 className="text-lg font-semibold">
-                  {movie.episodes.find((ep) => ep.number === selectedEpisode)?.title}
-                </h3>
-              </div>
-            )}
           </div>
-        </div>
-      )}
 
-      {/* Similar Movies Recommendations */}
-      <div className="container mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold mb-4">You May Also Like</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {movie.similarMovies.map((similarMovie) => (
-            <Link key={similarMovie.id} href={`/movie/${similarMovie.id}`}>
-              <Card className="bg-gray-800 hover:bg-gray-700 transition-colors">
-                <CardContent className="p-2">
-                  <Image
-                    src={similarMovie.poster || "/placeholder.svg"}
-                    alt={similarMovie.title}
-                    width={200}
-                    height={300}
-                    className="rounded-md mb-2"
-                  />
-                  <p className="text-sm font-semibold truncate">{similarMovie.title}</p>
+          {/* Middle and Right Content */}
+          <div className="flex-1 flex flex-col xl:flex-row gap-8">
+            {/* Middle Content */}
+            <div className="flex-1 space-y-6">
+              <h1 className="text-2xl sm:text-3xl font-bold">{movie.title}</h1>
+
+              {/* Status Badges */}
+              <div className="flex flex-wrap gap-2">
+                <Badge className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30">VIP</Badge>
+                <Badge className="bg-purple-500/20 text-purple-400 hover:bg-purple-500/30">{movie.genre}</Badge>
+                <Badge variant="outline">{movie.releaseYear}</Badge>
+                <Badge variant="outline">{movie.duration} min</Badge>
+              </div>
+
+              {/* Movie Stats */}
+              <div className="text-gray-400 space-y-2 text-sm sm:text-base">
+                <p>Total Episodes: {movie.totalEpisodes}</p>
+                <p>Status: {movie.status || "Completed"}</p>
+                <div className="flex items-center gap-2">
+                  <Star className="text-yellow-400 w-5 h-5" />
+                  <span>{Number(movie.rating).toFixed(1)}</span>
+                  <span>({movie.views} views)</span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="relative">
+                <p
+                  ref={descriptionRef}
+                  className={`text-gray-300 leading-relaxed text-sm lg:text-base ${
+                    !isDescriptionExpanded ? "line-clamp-6" : ""
+                  }`}
+                >
+                  {movie.summary}
+                </p>
+                {isDescriptionExpanded && (
+                  <Button
+                    variant="link"
+                    className="text-purple-400 mt-2"
+                    onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  >
+                    {isDescriptionExpanded ? (
+                      <>
+                        Collapse <ChevronUp className="ml-1 h-4 w-4" />
+                      </>
+                    ) : (
+                      <>
+                        Read more <ChevronDown className="ml-1 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-4">
+                <Button className="bg-purple-600 hover:bg-purple-700 text-white px-4 lg:px-8" onClick={handlePlayVideo}>
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                  Watch Now
+                </Button>
+                <Dialog open={openTrailer} onOpenChange={setOpenTrailer}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="border-purple-500 text-purple-400 hover:bg-purple-500/10">
+                      Watch Trailer
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                      <DialogTitle>{movie.title} - Trailer</DialogTitle>
+                      <DialogDescription>Enjoy the trailer!</DialogDescription>
+                    </DialogHeader>
+                    <div className="aspect-video">
+                      <video controls src={movie.trailerUrl} className="w-full h-full" />
+                    </div>
+                    <DialogClose asChild>
+                      <Button className="mt-4">Close</Button>
+                    </DialogClose>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="outline"
+                  className={`border-purple-500 text-purple-400 hover:bg-purple-500/10 ${isCollected ? "bg-purple-500/20" : ""}`}
+                  onClick={handleCollectToggle}
+                >
+                  <Heart className={`mr-2 h-4 w-4 ${isCollected ? "fill-purple-400" : ""}`} />
+                  {isCollected ? "Collected" : "Collect"}
+                </Button>
+              </div>
+
+              {/* Episode List */}
+              <div className="mt-8">
+                <h2 className="text-xl font-semibold mb-4">Episode List</h2>
+                <ScrollArea className="h-[200px] pr-4">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+                    {Array.from({ length: movie.totalEpisodes || 63 }, (_, i) => (
+                      <Button
+                        key={i}
+                        variant="outline"
+                        className={`w-full justify-center px-2 ${
+                          selectedEpisode === i + 1
+                            ? "bg-purple-500/20 border-purple-500 text-purple-400"
+                            : "hover:bg-purple-500/10"
+                        }`}
+                        onClick={() => {
+                          setSelectedEpisode(i + 1);
+                          router.push(`/watch/${movie.id}/${i + 1}`);
+                        }}
+                      >
+                        <span className="sm:hidden">{i + 1}</span>
+                        <span className="hidden sm:inline">Ep {i + 1}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+
+            {/* Right Sidebar - Rankings */}
+            <div className="hidden xl:block xl:w-[300px] flex-shrink-0">
+              <Card className="bg-gray-800 border-none sticky top-6">
+                <CardContent className="p-4">
+                  <h2 className="text-xl font-semibold mb-4">Top 10 Views Rankings</h2>
+                  <div className="space-y-4">
+                    {topMovies.map((m, index) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center gap-3 cursor-pointer hover:bg-gray-700/50 p-2 rounded-lg"
+                        onClick={() => router.push(`/movie/${m.id}`)}
+                      >
+                        <span className="text-lg font-bold text-gray-400">#{index + 1}</span>
+                        <div className="flex-1">
+                          <p className="font-medium truncate">{m.title}</p>
+                          <p className="text-sm text-gray-400">{m.views} views</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* User Engagement Section */}
-      <div className="container mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold mb-4">Your Review</h2>
-        <div className="flex items-center mb-4">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <Star
-              key={star}
-              className={`h-6 w-6 cursor-pointer ${star <= userRating ? "text-yellow-400" : "text-gray-400"}`}
-              onClick={() => setUserRating(star)}
+        {/* Recommended Movies */}
+        {recommendedMovies.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-4">Recommended Movies</h2>
+            <Carousel className="w-full">
+              <CarouselContent className="-ml-2 md:-ml-4">
+                {recommendedMovies.map((recMovie) => (
+                  <CarouselItem key={recMovie.id} className="pl-2 md:pl-4 sm:basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/6">
+                    <div className="cursor-pointer" onClick={() => router.push(`/movie/${recMovie.id}`)}>
+                      <Image
+                        src={recMovie.posterUrl || "/placeholder.svg"}
+                        alt={recMovie.title}
+                        width={150}
+                        height={225}
+                        className="rounded-lg object-cover w-full h-[325px]"
+                      />
+                      <p className="text-sm mt-2 truncate">{recMovie.title}</p>
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <CarouselPrevious />
+              <CarouselNext />
+            </Carousel>
+          </div>
+        )}
+
+        {/* Comments Section */}
+        <div className="mt-8 pt-8 border-t border-gray-800">
+          <h2 className="text-xl font-semibold mb-4">Movie Reviews</h2>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  className={`h-6 w-6 cursor-pointer ${star <= userRating ? "text-yellow-400" : "text-gray-400"}`}
+                  onClick={() => setUserRating(star)}
+                />
+              ))}
+            </div>
+            <Textarea
+              placeholder="Share your thoughts about the movie..."
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="min-h-[100px] bg-gray-800 border-gray-700"
             />
-          ))}
+            <Button
+              className="bg-purple-600 hover:bg-purple-700"
+              onClick={() => {
+                toast({
+                  title: "Review Submitted",
+                  description: "Thank you for your feedback!",
+                  duration: 3000,
+                });
+                setUserRating(0);
+                setComment("");
+              }}
+            >
+              Submit Review
+            </Button>
+          </div>
         </div>
-        <Textarea
-          placeholder="Write your comment here..."
-          value={comment}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setComment(e.target.value)}
-          className="mb-4"
-        />
-        <Button>Submit Review</Button>
       </div>
     </div>
-  )
+  );
 }
-
